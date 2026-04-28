@@ -84,17 +84,9 @@ static void run_one(uint64_t num_keys, uint64_t num_lookups, uint64_t seed,
               << (num_keys / build_s / 1e6) << " M keys/s)\n";
 
     // ---- Verify minimality ----
-    {
-        std::vector<uint8_t> seen(num_keys, 0);
-        for (auto k : keys) {
-            uint64_t v = f(k);
-            if (v >= num_keys || seen[v]) {
-                std::cerr << "ERROR: function is not minimal/perfect at key=" << k
-                          << " v=" << v << "\n";
-                std::exit(1);
-            }
-            seen[v] = 1;
-        }
+    if (!phast::check(keys.begin(), f)) {
+        std::cerr << "ERROR: function is not minimal/perfect\n";
+        std::exit(1);
     }
 
     // ---- Size ----
@@ -126,14 +118,9 @@ static void run_one(uint64_t num_keys, uint64_t num_lookups, uint64_t seed,
         }
     }
     {
-        uint64_t checksum = 0;
-        auto q0 = clk::now();
-        for (auto k : queries) checksum ^= f(k);
-        auto q1 = clk::now();
-        double q_s = seconds(q0, q1);
-        essentials::do_not_optimize_away(checksum);
-        std::cout << "lookup:       " << (q_s * 1e9 / num_lookups) << " ns/key  ("
-                  << (num_lookups / q_s / 1e6) << " M lookups/s)\n";
+        double nanosec_per_key = phast::perf(queries.begin(), num_lookups, f);
+        std::cout << "lookup:       " << nanosec_per_key << " ns/key  ("
+                  << (1e3 / nanosec_per_key) << " M lookups/s)\n";
     }
 
     // ---- Serialization round-trip ----

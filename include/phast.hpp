@@ -25,6 +25,7 @@
 #include "compressed_array.hpp"
 #include "hasher.hpp"
 #include "function.hpp"
+#include "bench_util.hpp"
 
 namespace phast {
 
