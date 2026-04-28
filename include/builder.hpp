@@ -73,14 +73,14 @@ struct builder_state {
         int64_t score;
         size_t bucket;
         bool operator<(heap_entry const& o) const {
-            if (score != o.score) return score < o.score;     // max-heap on score
-            return bucket > o.bucket;                          // tie: smaller bucket first
+            if (score != o.score) return score < o.score;  // max-heap on score
+            return bucket > o.bucket;                      // tie: smaller bucket first
         }
     };
     std::priority_queue<heap_entry> pq;
 
-    builder_state(uint64_t const* keys_, size_t n_, generic_core const& core_,
-                  SeedSize ss, SeedChooser sc, weights w_)
+    builder_state(uint64_t const* keys_, size_t n_, generic_core const& core_, SeedSize ss,
+                  SeedChooser sc, weights w_)
         : seed_size(ss)
         , chooser(sc)
         , core(core_)
@@ -136,8 +136,8 @@ struct builder_state {
             size_t best_bucket = top.bucket;
             in_window.remove(best_bucket);
             size_t sz = bucket_size(best_bucket);
-            uint16_t best_seed = SeedChooser::best_seed_search(
-                uv, &keys[bucket_begin[best_bucket]], sz, core, SeedSize::bits_per_seed);
+            uint16_t best_seed = SeedChooser::best_seed_search(uv, &keys[bucket_begin[best_bucket]],
+                                                               sz, core, SeedSize::bits_per_seed);
             seed_size.set(seeds.data(), best_bucket, best_seed);
             if (best_bucket == span_begin) {
                 size_t old_span_end = span_end();

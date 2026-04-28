@@ -19,7 +19,9 @@ struct cyclic_set {
 
     std::array<uint64_t, SIZE_64> data{};
 
-    cyclic_set() { data.fill(0); }
+    cyclic_set() {
+        data.fill(0);
+    }
 
     inline void add(size_t value) {
         size_t v = value & MASK;
@@ -35,7 +37,9 @@ struct cyclic_set {
     }
 
     /* Clear the entire bit (i.e. clears the storage). */
-    void clear_all() { data.fill(0); }
+    void clear_all() {
+        data.fill(0);
+    }
 };
 
 }  // namespace phast

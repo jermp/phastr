@@ -11,12 +11,12 @@
 
 static int failed = 0;
 
-#define CHECK(cond)                                                                        \
-    do {                                                                                   \
-        if (!(cond)) {                                                                     \
-            ++failed;                                                                      \
-            std::cerr << "FAIL " << __FILE__ << ":" << __LINE__ << ": " << #cond << "\n";  \
-        }                                                                                  \
+#define CHECK(cond)                                                                       \
+    do {                                                                                  \
+        if (!(cond)) {                                                                    \
+            ++failed;                                                                     \
+            std::cerr << "FAIL " << __FILE__ << ":" << __LINE__ << ": " << #cond << "\n"; \
+        }                                                                                 \
     } while (0)
 
 template <typename Function, typename Keys>
@@ -80,9 +80,8 @@ static void test_save_load(size_t n) {
 }
 
 static void test_compact_array() {
-    using fn_t =
-        phast::function<phast::default_hasher, phast::bits8_seed_size, phast::seed_only,
-                        phast::compact_array>;
+    using fn_t = phast::function<phast::default_hasher, phast::bits8_seed_size, phast::seed_only,
+                                 phast::compact_array>;
     std::vector<uint64_t> keys;
     for (uint64_t i = 0; i < 500; ++i) keys.push_back(i * 1009 + 17);
     fn_t f;

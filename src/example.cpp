@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
 
     essentials::sizer sizer;
     sizer.visit(f);
-    std::cout << "size = " << sizer.bytes() << " bytes ("
-              << (sizer.bytes() * 8.0 / n) << " bits / key)\n";
+    std::cout << "size = " << sizer.bytes() << " bytes (" << (sizer.bytes() * 8.0 / n)
+              << " bits / key)\n";
     return 0;
 }
