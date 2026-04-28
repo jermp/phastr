@@ -30,7 +30,9 @@ struct bits8_seed_size {
 
     bits8_seed_size() = default;
 
-    static size_t num_elements(size_t num_seeds) { return num_seeds; }
+    static size_t num_elements(size_t num_seeds) {
+        return num_seeds;
+    }
 
     static std::vector<vec_element> new_zeroed(size_t num_seeds) {
         return std::vector<vec_element>(num_seeds, 0);
@@ -65,7 +67,9 @@ struct bits_seed_size {
         return std::vector<vec_element>(num_elements(num_seeds), 0);
     }
 
-    inline uint64_t mask() const { return (1ULL << bits_per_seed) - 1; }
+    inline uint64_t mask() const {
+        return (1ULL << bits_per_seed) - 1;
+    }
 
     inline uint16_t get(vec_element const* vec, size_t index) const {
         size_t bit = index * bits_per_seed;

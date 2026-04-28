@@ -12,7 +12,8 @@ static inline uint64_t mult_hi(uint64_t a, uint64_t b) {
 
 /* Returns floor((key * n) / 2^64) - i.e. maps key in [0, 2^64) to [0, n). */
 static inline uint64_t map64_to_64(uint64_t key, uint64_t n) {
-    return static_cast<uint64_t>((static_cast<__uint128_t>(key) * static_cast<__uint128_t>(n)) >> 64);
+    return static_cast<uint64_t>((static_cast<__uint128_t>(key) * static_cast<__uint128_t>(n)) >>
+                                 64);
 }
 
 /* mix(a,b) = (high64(a*b)) XOR (low64(a*b)) */

@@ -35,15 +35,18 @@ struct compact_array {
 
     compact_array() = default;
 
-    void build(std::vector<uint64_t> const& values, uint64_t /*last*/,
-               uint64_t /*num_keys*/) {
+    void build(std::vector<uint64_t> const& values, uint64_t /*last*/, uint64_t /*num_keys*/) {
         if (values.empty()) return;
         m_data.build(values.begin(), values.size());
     }
 
-    inline uint64_t get(uint64_t i) const { return m_data.access(i); }
+    inline uint64_t get(uint64_t i) const {
+        return m_data.access(i);
+    }
 
-    uint64_t size() const { return m_data.size(); }
+    uint64_t size() const {
+        return m_data.size();
+    }
 
     template <typename Visitor>
     void visit(Visitor& visitor) const {
@@ -67,9 +70,13 @@ struct elias_fano_array {
         m_ef.encode(values.begin(), values.size(), last);
     }
 
-    inline uint64_t get(uint64_t i) const { return m_ef.access(i); }
+    inline uint64_t get(uint64_t i) const {
+        return m_ef.access(i);
+    }
 
-    uint64_t size() const { return m_ef.size(); }
+    uint64_t size() const {
+        return m_ef.size();
+    }
 
     template <typename Visitor>
     void visit(Visitor& visitor) const {

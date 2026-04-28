@@ -71,10 +71,10 @@ inline bool bit_get(std::vector<uint64_t> const& bm, size_t i) {
 
 }  // namespace detail
 
-template <typename Hasher = default_hasher,                      //
-          typename SeedSize = bits8_seed_size,                   //
-          typename SeedChooser = seed_only,                      //
-          typename CompressedArray = default_compressed_array>   //
+template <typename Hasher = default_hasher,                     //
+          typename SeedSize = bits8_seed_size,                  //
+          typename SeedChooser = seed_only,                     //
+          typename CompressedArray = default_compressed_array>  //
 struct function {
     using hash_type = uint64_t;
     using seed_size_type = SeedSize;
@@ -121,7 +121,9 @@ struct function {
         return uint64_t(-1);
     }
 
-    uint64_t num_keys() const { return m_num_keys; }
+    uint64_t num_keys() const {
+        return m_num_keys;
+    }
 
     /* Output range of the (minimal) function. */
     uint64_t output_range() const {
@@ -129,7 +131,9 @@ struct function {
     }
 
     /* Size of the output table. For a minimal perfect hash function this equals num_keys(). */
-    uint64_t table_size() const { return m_num_keys; }
+    uint64_t table_size() const {
+        return m_num_keys;
+    }
 
     template <typename Visitor>
     void visit(Visitor& visitor) const {
@@ -190,10 +194,10 @@ private:
         // Sort ascending: this groups keys by bucket and orders them by slice_begin
         // within each bucket (both quantities are monotone in the hash).
         std::sort(hashes.begin(), hashes.end());
-        weights w0 = SeedChooser::bucket_evaluator(SeedSize::bits_per_seed, m_level0_core.slice_len());
-        auto lvl0 = build_level_st<SeedSize, SeedChooser>(hashes.data(), hashes.size(),
-                                                          m_level0_core, m_seed_size,
-                                                          SeedChooser{}, w0);
+        weights w0 =
+            SeedChooser::bucket_evaluator(SeedSize::bits_per_seed, m_level0_core.slice_len());
+        auto lvl0 = build_level_st<SeedSize, SeedChooser>(
+            hashes.data(), hashes.size(), m_level0_core, m_seed_size, SeedChooser{}, w0);
         m_level0_seeds = std::move(lvl0.seeds);
 
         // Filter bumped keys for next level.

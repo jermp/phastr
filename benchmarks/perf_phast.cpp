@@ -60,15 +60,14 @@ static std::vector<uint64_t> distinct_uint64(uint64_t n, uint64_t seed) {
 }
 
 template <typename Function>
-static void run_one(uint64_t num_keys, uint64_t num_lookups, uint64_t seed,
-                    int run_index, int total_runs)  //
+static void run_one(uint64_t num_keys, uint64_t num_lookups, uint64_t seed, int run_index,
+                    int total_runs)  //
 {
     std::cout << "\n[run " << run_index << "/" << total_runs << "] " << fmt_num(num_keys)
               << " keys, " << fmt_num(num_lookups) << " lookups\n";
     std::cout << "----------------------------------------\n";
 
-    std::cout << "generating " << fmt_num(num_keys) << " distinct uint64_t keys ... "
-              << std::flush;
+    std::cout << "generating " << fmt_num(num_keys) << " distinct uint64_t keys ... " << std::flush;
     auto t0 = clk::now();
     auto keys = distinct_uint64(num_keys, seed);
     auto t1 = clk::now();
@@ -80,8 +79,8 @@ static void run_one(uint64_t num_keys, uint64_t num_lookups, uint64_t seed,
     f.build(keys);
     auto b1 = clk::now();
     double build_s = seconds(b0, b1);
-    std::cout << "build:        " << build_s << " s  ("
-              << (num_keys / build_s / 1e6) << " M keys/s)\n";
+    std::cout << "build:        " << build_s << " s  (" << (num_keys / build_s / 1e6)
+              << " M keys/s)\n";
 
     // ---- Verify minimality ----
     if (!phast::check(keys.begin(), f)) {
@@ -93,8 +92,7 @@ static void run_one(uint64_t num_keys, uint64_t num_lookups, uint64_t seed,
     essentials::sizer sizer;
     sizer.visit(f);
     double bits_per_key = sizer.bytes() * 8.0 / num_keys;
-    std::cout << "size:         " << sizer.bytes() << " bytes  ("
-              << bits_per_key << " bits/key)\n";
+    std::cout << "size:         " << sizer.bytes() << " bytes  (" << bits_per_key << " bits/key)\n";
 
     // ---- Lookup throughput ----
     // Use a freshly shuffled subset of size num_lookups. Reusing input keys is fine
@@ -112,15 +110,14 @@ static void run_one(uint64_t num_keys, uint64_t num_lookups, uint64_t seed,
             while (queries.size() < num_lookups) {
                 queries.insert(queries.end(), shuffled.begin(),
                                shuffled.begin() +
-                                   std::min<size_t>(num_lookups - queries.size(),
-                                                    shuffled.size()));
+                                   std::min<size_t>(num_lookups - queries.size(), shuffled.size()));
             }
         }
     }
     {
         double nanosec_per_key = phast::perf(queries.begin(), num_lookups, f);
-        std::cout << "lookup:       " << nanosec_per_key << " ns/key  ("
-                  << (1e3 / nanosec_per_key) << " M lookups/s)\n";
+        std::cout << "lookup:       " << nanosec_per_key << " ns/key  (" << (1e3 / nanosec_per_key)
+                  << " M lookups/s)\n";
     }
 
     // ---- Serialization round-trip ----

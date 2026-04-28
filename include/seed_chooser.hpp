@@ -40,13 +40,17 @@ struct seed_only {
 
     using used_values = used_value_set;
 
-    static inline uint16_t extra_shift(uint8_t /*bits_per_seed*/) { return 0; }
+    static inline uint16_t extra_shift(uint8_t /*bits_per_seed*/) {
+        return 0;
+    }
 
     static inline uint64_t f(uint64_t key, uint16_t seed, generic_core const& c) {
         return c.f(key, seed);
     }
 
-    static inline uint64_t minimal_output_range(uint64_t num_of_keys) { return num_of_keys; }
+    static inline uint64_t minimal_output_range(uint64_t num_of_keys) {
+        return num_of_keys;
+    }
 
     static inline weights bucket_evaluator(uint8_t bits_per_seed, uint16_t slice_len) {
         return weights::make(bits_per_seed, slice_len);
