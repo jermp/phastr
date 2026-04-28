@@ -21,13 +21,7 @@ static int failed = 0;
 
 template <typename Function, typename Keys>
 static void check_mphf(Function const& f, Keys const& keys) {
-    std::set<uint64_t> seen;
-    for (auto const& k : keys) {
-        uint64_t v = f(k);
-        CHECK(v < keys.size());
-        CHECK(seen.insert(v).second);
-    }
-    CHECK(seen.size() == keys.size());
+    CHECK(phast::check(keys.begin(), f));
 }
 
 static void test_small_uint64() {

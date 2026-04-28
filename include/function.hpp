@@ -80,6 +80,9 @@ struct function {
     using seed_size_type = SeedSize;
     using vec_element = typename SeedSize::vec_element;
 
+    /* PHast is always a minimal perfect hash function. */
+    static constexpr bool minimal = true;
+
     /* Build configuration. */
     struct config {
         uint16_t bucket_size_100 = bits_per_seed_to_100_bucket_size(SeedSize::bits_per_seed);
@@ -124,6 +127,9 @@ struct function {
     uint64_t output_range() const {
         return m_level0_core.output_range(SeedChooser::extra_shift(SeedSize::bits_per_seed));
     }
+
+    /* Size of the output table. For a minimal perfect hash function this equals num_keys(). */
+    uint64_t table_size() const { return m_num_keys; }
 
     template <typename Visitor>
     void visit(Visitor& visitor) const {
