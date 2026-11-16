@@ -7,7 +7,7 @@ quantify the improvements of replacing PTHash with PHastR in SSHash. See
 
 The `main` branch contains the PHastR implementation only; the PHast
 implementation is preserved on the
-[`phast-implementation`](https://github.com/jermp/phast/tree/phast-implementation)
+[`phast-implementation`](https://github.com/jermp/phastr/tree/phast-implementation)
 branch, and this branch keeps both, so that the comparison stays
 reproducible. Run it with:
 
@@ -63,8 +63,8 @@ The two dependencies (`bits` and `essentials`) are git submodules, so clone
 recursively:
 
 ```bash
-git clone --recurse-submodules https://github.com/jermp/phast.git
-cd phast
+git clone --recurse-submodules https://github.com/jermp/phastr.git
+cd phastr
 ```
 
 If you cloned without `--recurse-submodules`, initialize them after the fact:
