@@ -1,4 +1,10 @@
-# PHast and PHastR
+# PHast and PHastR — comparison branch
+
+**This branch adds a benchmark comparing PTHash (in the configurations used
+by [SSHash](https://github.com/jermp/sshash)) with PHast and PHastR**, to
+quantify the improvements of replacing PTHash with PHastR in SSHash. See
+[Comparison with PTHash](#comparison-with-pthash-as-used-in-sshash) below.
+
 
 C++17 implementations of two minimal perfect hash functions (MPHFs) of the
 PHast family:
@@ -220,3 +226,63 @@ f.build_in_internal_memory(keys.begin(), keys.size(), config);
 For key types other than `uint64_t`, supply a hasher with a static method
 `hash(Key const&, uint64_t seed) -> uint64_t`. Serialization works as for
 PHast, with `essentials::save` / `essentials::load`.
+
+## Comparison with PTHash (as used in SSHash)
+
+This branch carries an extra benchmark, `compare_mphf`, which compares on
+the same random 64-bit key sets:
+
+- **PTHash** ([jermp/pthash](https://github.com/jermp/pthash), pinned to
+  the same commit used by SSHash) in the two configurations used by SSHash:
+  the *minimizers* MPHF (`partitioned_phf` with `opt_bucketer`, `compact`
+  encoder, minimal output, `lambda = 5.0`, `alpha = 0.94`,
+  `avg_partition_size = 3000000`, built in external memory) and the *skew
+  index* MPHFs (the same type with `lambda = 7.0`, built in internal
+  memory). Keys are hashed with `CityHash128WithSeed`, as in SSHash.
+- **PHast**, default configuration (single-threaded construction).
+- **PHastR**, with the default parameters (`lambda = 4.25`) and with
+  `lambda = 4.5`, in internal and external memory, hashing keys with
+  `CityHash64WithSeed` so that the hashing cost is comparable.
+
+It requires the `pthash` submodule, so clone (or update) with
+`--recurse-submodules`; the target is built automatically when
+`external/pthash` is present:
+
+```bash
+cd build
+cmake ..
+make compare_mphf
+./compare_mphf <num_keys> <num_lookups> <num_runs> <seed> <num_threads>
+./compare_mphf 10000000 10000000 3 1 4
+```
+
+The benchmark checks that every structure is a minimal perfect hash
+function on the key set, and prints a summary table (medians over the
+runs) with construction time, space, lookup time on a shuffled stream of
+keys, and, for PHastR, the fraction of keys bumped from the first level.
+
+Representative results on 10M keys with 4 threads (medians of 3 runs on a
+4-core cloud container; absolute numbers vary with the machine, ratios are
+the interesting part):
+
+| method | build [ns/key] | space [bits/key] | lookup [ns/key] | bumped [%] |
+|:---|---:|---:|---:|---:|
+| PTHash (sshash minimizers config, external) | 96.1 | 3.057 | 33.7 | - |
+| PTHash (sshash minimizers config, internal) | 65.6 | 3.057 | 25.1 | - |
+| PTHash (sshash skew-index config, internal) | 106.8 | 2.646 | 31.8 | - |
+| PHast (default, 1 thread) | 694.2 | 1.928 | 12.9 | - |
+| PHastR (lambda=4.25, internal) | 55.8 | 1.946 | 12.4 | 0.52 |
+| PHastR (lambda=4.25, external) | 79.1 | 1.946 | 14.7 | 0.52 |
+| PHastR (lambda=4.5, internal) | 49.7 | 1.909 | 17.7 | 1.21 |
+
+Note that on small key sets (fewer than `avg_partition_size` keys) the
+partitioned PTHash configurations degenerate to a single partition and
+build single-threaded, so the gap is much larger: on 2M keys PHastR builds
+about 7x faster than the minimizers configuration. External-memory
+construction has a fixed overhead that amortizes on large key sets.
+
+Compared with the PTHash configuration used for the SSHash minimizers
+MPHF, PHastR builds faster (1.2-1.7x at 10M keys, and much more on the
+small partitions of the skew index), uses about 1.1 bits/key less space,
+and answers queries about twice as fast, while also providing a
+single-pass external-memory construction.

@@ -91,4 +91,16 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_executable(${BENCH_SRC_NAME} ${BENCH_SRC})
     target_link_libraries(${BENCH_SRC_NAME} PRIVATE PHAST)
   endforeach(BENCH_SRC)
+
+  # MPHF comparison benchmark: PTHash (as used in SSHash) vs. PHast vs. PHastR.
+  # Requires the `pthash` submodule (git submodule update --init --recursive).
+  if (EXISTS ${CMAKE_CURRENT_LIST_DIR}/external/pthash/CMakeLists.txt)
+    MESSAGE(STATUS "Configuring the `pthash` library: external/pthash")
+    add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/external/pthash
+                     ${CMAKE_BINARY_DIR}/pthash-build)
+    add_executable(compare_mphf benchmarks/compare_mphf.cpp
+                                benchmarks/comparison/cityhash.cpp)
+    target_include_directories(compare_mphf PRIVATE benchmarks)
+    target_link_libraries(compare_mphf PRIVATE PHAST PTHASH)
+  endif()
 endif()
