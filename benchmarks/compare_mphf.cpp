@@ -14,9 +14,12 @@
 
       - PHastR (Vigna), with the default parameters (8-bit seeds, four
         layouts, slices of length 1024, lambda = 4.25) and with
-        lambda = 4.5, in internal and external memory; keys are hashed
-        with CityHash64WithSeed, for a cost comparable to that of the
-        PTHash configurations.
+        lambda = 4.5, in internal and external memory.
+
+    PHast and PHastR use the very same hasher, the fastest available for
+    64-bit keys (an inlined SplitMix64-based mix), so their lookup times
+    are directly comparable; PTHash keeps CityHash128WithSeed, as that is
+    the configuration used by SSHash.
 
     For each structure the benchmark reports construction time, space, and
     lookup time on a random (shuffled) stream of keys of the set, plus the
@@ -72,15 +75,11 @@ using sshash_pthash_type = pthash::partitioned_phf<city_hasher_128,       //
                                                    true                   //
                                                    >;
 
-/* A 64-bit CityHash hasher for PHast/PHastR, so that the cost of hashing is
-   comparable to that of the PTHash configurations. */
-struct city_hasher_64 {
-    static inline uint64_t hash(uint64_t key, uint64_t seed) {
-        return cityhash::CityHash64WithSeed(reinterpret_cast<char const*>(&key), sizeof(key), seed);
-    }
-};
-
-using phastr_city = phastr::function<city_hasher_64>;
+/* PHast and PHastR use the very same hasher: phast::default_hasher and
+   phastr::default_hasher both compute splitmix64(key + splitmix64(seed)),
+   the fastest hashing scheme available here for 64-bit keys (checked at
+   startup in main). */
+using phastr_function = phastr::default_function;
 
 struct row {
     std::string name;
@@ -244,30 +243,30 @@ static void run_all(uint64_t num_keys, uint64_t num_lookups, uint64_t seed, uint
     pr_config.seed = seed;
     pr_config.num_threads = num_threads;
     {
-        phastr_city f;
+        phastr_function f;
         auto config = pr_config;
         run_competitor(
             "PHastR (lambda=4.25, internal)", f,
-            [&](phastr_city& f) { f.build_in_internal_memory(keys.begin(), keys.size(), config); },
+            [&](phastr_function& f) { f.build_in_internal_memory(keys.begin(), keys.size(), config); },
             keys, num_lookups);
         rows.back().bumped_percent = percent_bumped(f, keys);
     }
     {
-        phastr_city f;
+        phastr_function f;
         auto config = pr_config;
         run_competitor(
             "PHastR (lambda=4.25, external)", f,
-            [&](phastr_city& f) { f.build_in_external_memory(keys.begin(), keys.size(), config); },
+            [&](phastr_function& f) { f.build_in_external_memory(keys.begin(), keys.size(), config); },
             keys, num_lookups);
         rows.back().bumped_percent = percent_bumped(f, keys);
     }
     {
-        phastr_city f;
+        phastr_function f;
         auto config = pr_config;
         config.bucket_size = 4.5;
         run_competitor(
             "PHastR (lambda=4.5, internal)", f,
-            [&](phastr_city& f) { f.build_in_internal_memory(keys.begin(), keys.size(), config); },
+            [&](phastr_function& f) { f.build_in_internal_memory(keys.begin(), keys.size(), config); },
             keys, num_lookups);
         rows.back().bumped_percent = percent_bumped(f, keys);
     }
@@ -286,6 +285,16 @@ int main(int argc, char** argv) {
     std::cout << "  num_runs    = " << num_runs << "\n";
     std::cout << "  seed        = " << seed << "\n";
     std::cout << "  num_threads = " << num_threads << std::endl;
+
+    /* PHast and PHastR must use the very same hasher. */
+    for (uint64_t key : {uint64_t(0), uint64_t(42), uint64_t(-1)}) {
+        for (uint64_t s : {uint64_t(0), uint64_t(1), seed}) {
+            if (phast::default_hasher::hash_one(key, s) != phastr::default_hasher::hash(key, s)) {
+                std::cerr << "ERROR: PHast and PHastR hashers differ" << std::endl;
+                return 1;
+            }
+        }
+    }
 
     for (int run = 0; run != num_runs; ++run) {
         run_all(num_keys, num_lookups, seed + static_cast<uint64_t>(run), num_threads);
