@@ -27,7 +27,7 @@
 #include <vector>
 
 #include "essentials.hpp"
-#include "bench_util.hpp"
+#include "phastr/bench_util.hpp"
 #include "phastr/phastr.hpp"
 
 using clk = std::chrono::high_resolution_clock;
@@ -91,7 +91,7 @@ static void run_one(uint64_t num_keys, uint64_t num_lookups, uint64_t seed, uint
               << " M keys/s, " << (build_s * 1e9) / num_keys << " ns/key)\n";
 
     // ---- Check ----
-    if (!phast::check(keys.begin(), f)) std::exit(1);
+    if (!phastr::check(keys.begin(), f)) std::exit(1);
 
     // ---- Size ----
     const uint64_t bytes = f.num_bits() / 8;
@@ -105,7 +105,9 @@ static void run_one(uint64_t num_keys, uint64_t num_lookups, uint64_t seed, uint
               << "%)\n";
 
     // ---- Lookups ----
-    phast::perf(keys.begin(), num_lookups, f);
+    const double lookup_ns = phastr::perf(keys.begin(), num_lookups, f);
+    std::cout << "lookup:       " << lookup_ns << " ns/key  (" << 1000.0 / lookup_ns
+              << " M lookups/s)\n";
 
     // ---- Save / load ----
     const std::string path = "tmp_perf_phastr.bin";

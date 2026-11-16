@@ -4,7 +4,7 @@
     Correctness check and lookup-performance benchmark, kept identical to
     PTHash's `pthash::check` and `pthash::perf` (see
     https://github.com/jermp/pthash/blob/master/src/util.hpp) so that
-    measurements collected with PHast and PTHash are directly comparable.
+    measurements collected with PHastR and PTHash are directly comparable.
 */
 
 #include <chrono>
@@ -14,7 +14,7 @@
 #include "bit_vector.hpp"
 #include "essentials.hpp"
 
-namespace phast {
+namespace phastr {
 
 template <typename Function, typename Iterator>
 bool check(Iterator keys, Function const& f) {
@@ -75,4 +75,4 @@ double perf(Iterator keys, const uint64_t num_queries, Function const& f) {
     return nanosec_per_key;
 }
 
-}  // namespace phast
+}  // namespace phastr

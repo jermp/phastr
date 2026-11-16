@@ -1,37 +1,37 @@
-# PHast and PHastR
+# PHastR
 
-C++17 implementations of two minimal perfect hash functions (MPHFs) of the
-PHast family:
+A header-only C++17 implementation of **PHastR** (minimal perfect hashing
+with rotated layouts), a minimal perfect hash function (MPHF) proposed by
+Sebastiano Vigna:
 
-- **PHast** (Perfect Hashing made fast), by Piotr Beling and Peter Sanders:
+> Sebastiano Vigna. *PHastR: Faster Minimal Perfect Hashing with Rotated
+> Layouts*, 2026. [arXiv:2610.17833](https://arxiv.org/abs/2610.17833)
 
-  > Piotr Beling, Peter Sanders. *PHast - Perfect Hashing made fast*, 2025.
-  > [arXiv:2504.17918](https://arxiv.org/abs/2504.17918)
+The reference Rust implementation lives in
+[vigna/sux-rs](https://github.com/vigna/sux-rs).
 
-  Reference Rust implementation:
-  [beling/bsuccinct-rs](https://github.com/beling/bsuccinct-rs/tree/main/internal/phast).
+With the default parameters (8-bit seeds, four layouts, slices of length
+1024, and an expected bucket size of 4.25 keys), PHastR uses about 1.94
+bits per key, and it is one of the fastest MPHFs available, both to build
+and to query, as it bumps very few keys (about 0.5%). The implementation
+supports multi-threaded construction and an external-memory mode that
+keeps the key records in temporary files and builds the *identical*
+structure, scaling to very large key sets.
 
-- **PHastR** (minimal perfect hashing with rotated layouts), by Sebastiano
-  Vigna:
-
-  > Sebastiano Vigna. *PHastR: Faster Minimal Perfect Hashing with Rotated
-  > Layouts*, 2026. [arXiv:2610.17833](https://arxiv.org/abs/2610.17833)
-
-  Reference Rust implementation:
-  [vigna/sux-rs](https://github.com/vigna/sux-rs).
-
-  With the default parameters (8-bit seeds, four layouts, slices of length
-  1024, and an expected bucket size of 4.25 keys), PHastR uses about 1.94
-  bits per key; it is much faster to build than PHast, and its queries are
-  as fast or faster, as it bumps very few keys (about 0.5%). The
-  implementation supports multi-threaded construction and an
-  external-memory mode that keeps the key records in temporary files and
-  builds the *identical* structure, scaling to very large key sets.
-
-This repository provides header-only C++17 translations built on top of
-[`jermp/bits`](https://github.com/jermp/bits) (compact vectors, Elias-Fano)
-and [`jermp/essentials`](https://github.com/jermp/essentials)
+This implementation is built on top of
+[`jermp/bits`](https://github.com/jermp/bits) (compact vectors,
+Elias-Fano) and [`jermp/essentials`](https://github.com/jermp/essentials)
 (serialization helpers).
+
+This repository previously also contained a C++ port of PHast (Beling and
+Sanders, [arXiv:2504.17918](https://arxiv.org/abs/2504.17918)), which
+PHastR supersedes: PHastR builds an order of magnitude faster at
+essentially the same space, with faster queries. The PHast implementation
+is preserved on the `phast-implementation` branch, as it is nice to look
+at to understand how the PHast family works; the `*-comparison` branch
+benchmarks PTHash (in the configurations used by
+[SSHash](https://github.com/jermp/sshash)), PHast, and PHastR against each
+other.
 
 ## Requirements
 
@@ -85,10 +85,8 @@ make -j
 The build produces these executables in the `build/` directory:
 
 - `example`      — a small end-to-end demo (from `src/example.cpp`)
-- `perf_phast`   — a PHast performance benchmark (from `benchmarks/perf_phast.cpp`)
-- `perf_phastr`  — a PHastR performance benchmark (from `benchmarks/perf_phastr.cpp`)
-- `test_phast`   — the PHast test suite (from `test/test_phast.cpp`)
-- `test_phastr`  — the PHastR test suite (from `test/test_phastr.cpp`)
+- `perf_phastr`  — a performance benchmark (from `benchmarks/perf_phastr.cpp`)
+- `test_phastr`  — the test suite (from `test/test_phastr.cpp`)
 
 ## Running the example
 
@@ -96,34 +94,18 @@ The example builds an MPHF over `n` random 64-bit keys, verifies that it is
 minimal and perfect, and prints its size in bits per key.
 
 ```bash
-./example            # default: 1,000,000 keys
-./example 5000000    # 5,000,000 keys
-```
-
-Sample output:
-
-```
-generating 1000000 random 64-bit keys...
-built in 0.42 s (2.38 M keys/s)
-function verified: minimal perfect on 1000000 keys
-size = 268912 bytes (2.15 bits / key)
+./example                 # default: 1,000,000 keys, 1 thread
+./example 100000000 8     # 100,000,000 keys, 8 threads
 ```
 
 ## Running the benchmark
 
-`perf_phast` measures construction throughput, lookup latency, serialized
-size, and load time over multiple runs.
-
-```bash
-./perf_phast                                # 10M keys, 10M lookups, 3 runs
-./perf_phast <num_keys> <num_lookups> <num_runs> <seed>
-./perf_phast 50000000 10000000 1 42
-```
-
-`perf_phastr` does the same for PHastR, with optional multi-threaded
+`perf_phastr` measures construction throughput, lookup latency, serialized
+size, and load time over multiple runs, with optional multi-threaded
 construction and external-memory mode:
 
 ```bash
+./perf_phastr                                # 10M keys, 10M lookups, 3 runs
 ./perf_phastr <num_keys> <num_lookups> <num_runs> <seed> <num_threads> <external>
 ./perf_phastr 100000000 10000000 1 42 8 0    # 8 threads, internal memory
 ./perf_phastr 100000000 10000000 1 42 8 1    # 8 threads, external memory
@@ -137,48 +119,16 @@ From the `build/` directory:
 ctest --output-on-failure
 ```
 
-or run the test binaries directly:
+or run the test binary directly:
 
 ```bash
-./test_phast
 ./test_phastr
-```
-
-## Using PHast in your own code
-
-PHast is header-only. Include `phast.hpp` and link against the `PHAST`
-CMake target:
-
-```cpp
-#include "phast.hpp"
-
-std::vector<uint64_t> keys = /* distinct keys */;
-phast::default_function f;
-f.build(keys);
-
-uint64_t pos = f(keys[0]);   // pos is in [0, keys.size())
-```
-
-To use this project as a CMake dependency, add it as a subdirectory and link
-the interface target:
-
-```cmake
-add_subdirectory(phast)
-target_link_libraries(my_target PRIVATE PHAST)
-```
-
-Functions can be saved and reloaded with `essentials::save` / `essentials::load`:
-
-```cpp
-essentials::save(f, "mphf.bin");
-
-phast::default_function g;
-essentials::load(g, "mphf.bin");
 ```
 
 ## Using PHastR in your own code
 
-PHastR is header-only as well. Include `phastr/phastr.hpp`:
+PHastR is header-only. Include `phastr/phastr.hpp` and link against the
+`PHAST` CMake target:
 
 ```cpp
 #include "phastr/phastr.hpp"
@@ -218,5 +168,21 @@ f.build_in_internal_memory(keys.begin(), keys.size(), config);
 ```
 
 For key types other than `uint64_t`, supply a hasher with a static method
-`hash(Key const&, uint64_t seed) -> uint64_t`. Serialization works as for
-PHast, with `essentials::save` / `essentials::load`.
+`hash(Key const&, uint64_t seed) -> uint64_t`.
+
+To use this project as a CMake dependency, add it as a subdirectory and link
+the interface target:
+
+```cmake
+add_subdirectory(phast)
+target_link_libraries(my_target PRIVATE PHAST)
+```
+
+Functions can be saved and reloaded with `essentials::save` / `essentials::load`:
+
+```cpp
+essentials::save(f, "mphf.bin");
+
+phastr::default_function g;
+essentials::load(g, "mphf.bin");
+```

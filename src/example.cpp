@@ -1,43 +1,52 @@
-#include <cstdint>
+/*
+    A small end-to-end demo: builds a PHastR minimal perfect hash function
+    over n random 64-bit keys, verifies that it is minimal and perfect, and
+    prints its size in bits per key.
+
+    Usage: ./example [n] [num_threads]
+*/
+
+#include <chrono>
 #include <iostream>
 #include <random>
-#include <set>
 #include <vector>
 
-#include "phast.hpp"
+#include "phastr/phastr.hpp"
 
 int main(int argc, char** argv) {
-    uint64_t n = (argc > 1) ? std::stoull(argv[1]) : 1'000'000ULL;
+    uint64_t n = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1000000;
+    uint64_t num_threads = argc > 2 ? std::strtoull(argv[2], nullptr, 10) : 1;
 
-    std::cout << "generating " << n << " random 64-bit keys...\n";
-    std::mt19937_64 rng(42);
-    std::set<uint64_t> uniq;
-    while (uniq.size() < n) uniq.insert(rng());
-    std::vector<uint64_t> keys(uniq.begin(), uniq.end());
+    std::cout << "generating " << n << " random 64-bit keys..." << std::endl;
+    std::mt19937_64 rng(1);
+    std::vector<uint64_t> keys(static_cast<size_t>(n * 1.05));
+    std::generate(keys.begin(), keys.end(), [&]() { return rng(); });
+    std::sort(keys.begin(), keys.end());
+    keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+    keys.resize(n);
+    std::shuffle(keys.begin(), keys.end(), rng);
 
-    using clock = std::chrono::high_resolution_clock;
-    auto t0 = clock::now();
+    phastr::build_configuration config;
+    config.num_threads = num_threads;
 
-    phast::default_function f;
-    f.build(keys);
+    phastr::default_function f;
+    auto t0 = std::chrono::high_resolution_clock::now();
+    f.build_in_internal_memory(keys.begin(), keys.size(), config);
+    auto t1 = std::chrono::high_resolution_clock::now();
+    const double s = std::chrono::duration<double>(t1 - t0).count();
+    std::cout << "built in " << s << " s (" << (n / s) / 1000000.0 << " M keys/s)" << std::endl;
 
-    auto t1 = clock::now();
-    double sec = std::chrono::duration<double>(t1 - t0).count();
-    std::cout << "built in " << sec << " s (" << (n / sec / 1e6) << " M keys/s)\n";
-
-    std::set<uint64_t> seen;
-    for (auto k : keys) {
-        uint64_t v = f(k);
-        if (v >= n || !seen.insert(v).second) {
-            std::cerr << "ERROR: function is not minimal/perfect\n";
+    std::vector<bool> seen(n, false);
+    for (auto key : keys) {
+        const uint64_t v = f(key);
+        if (v >= n || seen[v]) {
+            std::cerr << "ERROR: not a minimal perfect hash function" << std::endl;
             return 1;
         }
+        seen[v] = true;
     }
-    std::cout << "function verified: minimal perfect on " << n << " keys\n";
-
-    essentials::sizer sizer;
-    sizer.visit(f);
-    std::cout << "size = " << sizer.bytes() << " bytes (" << (sizer.bytes() * 8.0 / n)
-              << " bits / key)\n";
+    std::cout << "function verified: minimal perfect on " << n << " keys" << std::endl;
+    std::cout << "size = " << f.num_bits() / 8 << " bytes ("
+              << static_cast<double>(f.num_bits()) / n << " bits / key)" << std::endl;
     return 0;
 }
