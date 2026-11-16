@@ -107,17 +107,24 @@ static std::vector<uint64_t> distinct_uint64(uint64_t n, uint64_t seed) {
 }
 
 /* Lookup time on a shuffled stream of keys of the set (the keys are already
-   shuffled). */
+   shuffled): the median of several passes, as a single pass is noisy on
+   large key sets, where lookups are memory-bound. */
 template <typename Function>
 static double lookup_ns(Function const& f, std::vector<uint64_t> const& keys,
                         uint64_t num_lookups) {
-    uint64_t sum = 0;
-    const uint64_t n = keys.size();
-    auto t0 = clk::now();
-    for (uint64_t i = 0; i != num_lookups; ++i) sum += f(keys[i % n]);
-    auto t1 = clk::now();
-    essentials::do_not_optimize_away(sum);
-    return seconds(t0, t1) * 1e9 / static_cast<double>(num_lookups);
+    static const uint64_t rounds = 5;
+    const uint64_t n = std::min<uint64_t>(num_lookups, keys.size());
+    std::vector<double> times;
+    for (uint64_t round = 0; round != rounds; ++round) {
+        uint64_t sum = 0;
+        auto t0 = clk::now();
+        for (uint64_t i = 0; i != n; ++i) sum += f(keys[i]);
+        auto t1 = clk::now();
+        essentials::do_not_optimize_away(sum);
+        times.push_back(seconds(t0, t1) * 1e9 / static_cast<double>(n));
+    }
+    std::sort(times.begin(), times.end());
+    return times[times.size() / 2];
 }
 
 template <typename Function, typename = void>
