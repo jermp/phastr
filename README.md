@@ -23,16 +23,6 @@ This implementation is built on top of
 Elias-Fano) and [`jermp/essentials`](https://github.com/jermp/essentials)
 (serialization helpers).
 
-This repository previously also contained a C++ port of PHast (Beling and
-Sanders, [arXiv:2504.17918](https://arxiv.org/abs/2504.17918)), which
-PHastR supersedes: PHastR builds an order of magnitude faster at
-essentially the same space, with faster queries. The PHast implementation
-is preserved on the `phast-implementation` branch, as it is nice to look
-at to understand how the PHast family works; the `*-comparison` branch
-benchmarks PTHash (in the configurations used by
-[SSHash](https://github.com/jermp/sshash)), PHast, and PHastR against each
-other.
-
 ## Requirements
 
 - A C++17 compiler (GCC or Clang)
