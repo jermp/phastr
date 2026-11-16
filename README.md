@@ -239,10 +239,16 @@ the same random 64-bit key sets:
   `avg_partition_size = 3000000`, built in external memory) and the *skew
   index* MPHFs (the same type with `lambda = 7.0`, built in internal
   memory). Keys are hashed with `CityHash128WithSeed`, as in SSHash.
-- **PHast**, default configuration (single-threaded construction).
+- **PHast**, default configuration (single-threaded construction, as this
+  port does not implement parallel construction).
 - **PHastR**, with the default parameters (`lambda = 4.25`) and with
-  `lambda = 4.5`, in internal and external memory, hashing keys with
-  `CityHash64WithSeed` so that the hashing cost is comparable.
+  `lambda = 4.5`, in internal and external memory.
+
+PHast and PHastR use the very same hasher, the fastest available for
+64-bit keys (an inlined SplitMix64-based mix, identical in the two
+libraries and checked at startup), so their lookup times are directly
+comparable. Lookup times are medians of five passes over a shuffled
+stream of keys of the set.
 
 It requires the `pthash` submodule, so clone (or update) with
 `--recurse-submodules`; the target is built automatically when
@@ -261,28 +267,37 @@ function on the key set, and prints a summary table (medians over the
 runs) with construction time, space, lookup time on a shuffled stream of
 keys, and, for PHastR, the fraction of keys bumped from the first level.
 
-Representative results on 10M keys with 4 threads (medians of 3 runs on a
-4-core cloud container; absolute numbers vary with the machine, ratios are
-the interesting part):
+Representative results on 300M keys with 4 threads (on a 4-core cloud
+container; absolute numbers vary with the machine, ratios are the
+interesting part):
 
 | method | build [ns/key] | space [bits/key] | lookup [ns/key] | bumped [%] |
 |:---|---:|---:|---:|---:|
-| PTHash (sshash minimizers config, external) | 96.1 | 3.057 | 33.7 | - |
-| PTHash (sshash minimizers config, internal) | 65.6 | 3.057 | 25.1 | - |
-| PTHash (sshash skew-index config, internal) | 106.8 | 2.646 | 31.8 | - |
-| PHast (default, 1 thread) | 694.2 | 1.928 | 12.9 | - |
-| PHastR (lambda=4.25, internal) | 55.8 | 1.946 | 12.4 | 0.52 |
-| PHastR (lambda=4.25, external) | 79.1 | 1.946 | 14.7 | 0.52 |
-| PHastR (lambda=4.5, internal) | 49.7 | 1.909 | 17.7 | 1.21 |
+| PTHash (sshash minimizers config, external) | 140.1 | 2.833 | 91.3 | - |
+| PTHash (sshash minimizers config, internal) | 96.9 | 2.833 | 104.0 | - |
+| PTHash (sshash skew-index config, internal) | 214.1 | 2.557 | 86.6 | - |
+| PHast (default, 1 thread) | 709.6 | 1.927 | 31.4 | - |
+| PHastR (lambda=4.25, internal) | 41.5 | 1.944 | 23.2 | 0.51 |
+| PHastR (lambda=4.25, external) | 59.9 | 1.944 | 22.9 | 0.51 |
+| PHastR (lambda=4.5, internal) | 37.0 | 1.907 | 25.5 | 1.20 |
 
-Note that on small key sets (fewer than `avg_partition_size` keys) the
-partitioned PTHash configurations degenerate to a single partition and
-build single-threaded, so the gap is much larger: on 2M keys PHastR builds
-about 7x faster than the minimizers configuration. External-memory
-construction has a fixed overhead that amortizes on large key sets.
+(The two PHastR `lambda = 4.25` rows are the identical structure, built in
+internal and external memory; their lookup times agree within noise.)
 
 Compared with the PTHash configuration used for the SSHash minimizers
-MPHF, PHastR builds faster (1.2-1.7x at 10M keys, and much more on the
-small partitions of the skew index), uses about 1.1 bits/key less space,
-and answers queries about twice as fast, while also providing a
-single-pass external-memory construction.
+MPHF, at 300M keys PHastR builds 2.3-3.4x faster, uses about 0.9 bits/key
+less space, and answers queries about 4x faster, while also providing a
+single-pass external-memory construction. On small key sets (fewer than
+`avg_partition_size` keys) the partitioned PTHash configurations
+degenerate to a single partition and build single-threaded, so the
+construction gap is even larger (about 7x on 2M keys, the regime of the
+skew-index MPHFs). External-memory construction has a fixed overhead that
+amortizes on large key sets.
+
+Compared with PHast, PHastR builds an order of magnitude faster (even
+accounting for PHast's single-threaded builder: PHastR builds at about
+85 ns/key with one thread), answers queries 1.4-1.7x faster with the very
+same hasher (an interleaved measurement with 7 rounds on 300M keys gives
+medians of 18.5 ns/key for PHastR against 32.1 for PHast), and its space
+is within 0.02 bits/key of PHast at `lambda = 4.25`, or below it at
+`lambda = 4.5`.
