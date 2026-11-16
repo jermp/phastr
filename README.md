@@ -1,9 +1,19 @@
-# PHast and PHastR — comparison branch
+# PHast and PHastR — `comparison` branch
 
 **This branch adds a benchmark comparing PTHash (in the configurations used
 by [SSHash](https://github.com/jermp/sshash)) with PHast and PHastR**, to
 quantify the improvements of replacing PTHash with PHastR in SSHash. See
 [Comparison with PTHash](#comparison-with-pthash-as-used-in-sshash) below.
+
+The `main` branch contains the PHastR implementation only; the PHast
+implementation is preserved on the
+[`phast-implementation`](https://github.com/jermp/phast/tree/phast-implementation)
+branch, and this branch keeps both, so that the comparison stays
+reproducible. Run it with:
+
+```bash
+./script/run_comparison.sh [num_keys] [num_lookups] [num_runs] [seed] [num_threads]
+```
 
 
 C++17 implementations of two minimal perfect hash functions (MPHFs) of the
