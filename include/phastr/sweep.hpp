@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <memory>
 #include <queue>
 
 #include "util.hpp"
@@ -188,12 +189,20 @@ struct window {
 };
 
 /* The set of used slots of a level while its sweeps, which can run in
-   parallel, update it: bit i of word w is set if slot 64w + i is used. */
-struct shared_used_slots {
-    std::vector<std::atomic<uint64_t>> words;
+   parallel, update it: bit i of word w is set if slot 64w + i is used.
 
-    explicit shared_used_slots(uint64_t m) : words(ceil_div<uint64_t>(m, 64)) {
-        for (auto& w : words) w.store(0, std::memory_order_relaxed);
+   The words are kept in a plain array, as atomics are not movable, so
+   they cannot live in a std::vector (libc++ rejects it). */
+struct shared_used_slots {
+    std::unique_ptr<std::atomic<uint64_t>[]> words;
+    size_t num_words;
+
+    explicit shared_used_slots(uint64_t m)
+        : words(new std::atomic<uint64_t>[ceil_div<uint64_t>(m, 64)])
+        , num_words(ceil_div<uint64_t>(m, 64)) {
+        for (size_t i = 0; i != num_words; ++i) {
+            words[i].store(0, std::memory_order_relaxed);
+        }
     }
 
     inline void add(size_t w, uint64_t bits) {
@@ -202,12 +211,12 @@ struct shared_used_slots {
 
     /* A plain view of the words, valid once the sweeps are done. */
     std::vector<uint64_t> take() {
-        std::vector<uint64_t> out(words.size());
-        for (size_t i = 0; i != words.size(); ++i) {
+        std::vector<uint64_t> out(num_words);
+        for (size_t i = 0; i != num_words; ++i) {
             out[i] = words[i].load(std::memory_order_relaxed);
         }
-        words.clear();
-        words.shrink_to_fit();
+        words.reset();
+        num_words = 0;
         return out;
     }
 };
