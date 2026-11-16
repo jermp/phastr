@@ -37,8 +37,8 @@ The two dependencies (`bits` and `essentials`) are git submodules, so clone
 recursively:
 
 ```bash
-git clone --recurse-submodules https://github.com/jermp/phast.git
-cd phast
+git clone --recurse-submodules https://github.com/jermp/phastr.git
+cd phastr
 ```
 
 If you cloned without `--recurse-submodules`, initialize them after the fact:
@@ -68,7 +68,7 @@ make -j
 To build with AddressSanitizer enabled:
 
 ```bash
-cmake -DPHAST_USE_SANITIZERS=ON ..
+cmake -DPHASTR_USE_SANITIZERS=ON ..
 make -j
 ```
 
@@ -118,7 +118,7 @@ or run the test binary directly:
 ## Using PHastR in your own code
 
 PHastR is header-only. Include `phastr/phastr.hpp` and link against the
-`PHAST` CMake target:
+`PHASTR` CMake target:
 
 ```cpp
 #include "phastr/phastr.hpp"
@@ -164,8 +164,8 @@ To use this project as a CMake dependency, add it as a subdirectory and link
 the interface target:
 
 ```cmake
-add_subdirectory(phast)
-target_link_libraries(my_target PRIVATE PHAST)
+add_subdirectory(phastr)
+target_link_libraries(my_target PRIVATE PHASTR)
 ```
 
 Functions can be saved and reloaded with `essentials::save` / `essentials::load`:
