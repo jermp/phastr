@@ -47,12 +47,30 @@ static inline uint64_t splitmix64(uint64_t x) {
     return x;
 }
 
-/* A seeded hasher producing a 64-bit signature. The default works for
-   64-bit integer keys; for other key types, supply your own hasher with a
-   static method hash(Key const&, uint64_t seed) -> uint64_t. */
+/* A seeded hasher producing a 64-bit signature: it is constructed from a
+   64-bit seed, which it preprocesses once, so that queries pay only the
+   per-key work (without this, every query would pay a dependent chain to
+   rehash the seed, even at call sites that cannot hoist it). The default
+   works for 64-bit integer keys; for other key types, supply your own
+   hasher with the same interface: a constructor from the seed, a hashing
+   operator(), and a visit method serializing any preprocessed state. */
 struct default_hasher {
-    static inline uint64_t hash(uint64_t key, uint64_t seed) {
-        return splitmix64(key + splitmix64(seed));
+    uint64_t prepared;
+
+    default_hasher() : prepared(splitmix64(0)) {}
+    explicit default_hasher(uint64_t seed) : prepared(splitmix64(seed)) {}
+
+    __attribute__((always_inline)) inline uint64_t operator()(uint64_t key) const {
+        return splitmix64(key + prepared);
+    }
+
+    template <typename Visitor>
+    void visit(Visitor& visitor) const {
+        visitor.visit(prepared);
+    }
+    template <typename Visitor>
+    void visit(Visitor& visitor) {
+        visitor.visit(prepared);
     }
 };
 
@@ -76,11 +94,11 @@ static constexpr uint32_t DEFAULT_SCALE = 2;
    dependent chain, and the shift is faster. Define
    PHASTR_LAYOUT_FIELD_LOAD or PHASTR_LAYOUT_FIELD_SHIFT to override the
    choice. */
-static inline uint64_t default_layout_field(uint64_t lo, uint64_t s) {
-#if !defined(PHASTR_LAYOUT_FIELD_SHIFT) &&                                        \
-    (defined(PHASTR_LAYOUT_FIELD_LOAD) ||                                         \
-     (defined(__x86_64__) && defined(__BYTE_ORDER__) &&                           \
-      __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
+__attribute__((always_inline)) static inline uint64_t default_layout_field(uint64_t lo,
+                                                                           uint64_t s) {
+#if !defined(PHASTR_LAYOUT_FIELD_SHIFT) &&                                                   \
+    (defined(PHASTR_LAYOUT_FIELD_LOAD) || (defined(__x86_64__) && defined(__BYTE_ORDER__) && \
+                                           __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
     uint16_t field;
     std::memcpy(&field, reinterpret_cast<char const*>(&lo) + 2 * (s & 3), 2);
     return field;
@@ -132,14 +150,16 @@ struct function {
             config.external_memory ? MAX_LOG2_PARTITIONS : log2_partitions_for(n);
         store_writer writer(sig_fn::level0(), log2_partitions, config.external_memory,
                             config.tmp_dir, n);
+        m_hasher = Hasher(config.seed);
+        m_second_hasher = Hasher(config.seed ^ SECOND_HASH);
         {
             store_buffers buffers(writer);
             Iterator it = keys;
             for (uint64_t i = 0; i != n; ++i, ++it) {
                 auto const& key = *it;
                 record r;
-                r.h = Hasher::hash(key, config.seed);
-                r.second = Hasher::hash(key, config.seed ^ SECOND_HASH);
+                r.h = m_hasher(key);
+                r.second = m_second_hasher(key);
                 buffers.push(r);
             }
             buffers.finish();
@@ -155,18 +175,18 @@ struct function {
        different keys of the original set are mapped to different values. If
        the key was not in the original set, the result is arbitrary. */
     template <typename Key>
-    inline uint64_t operator()(Key const& key) const {
-        const uint64_t h = Hasher::hash(key, m_seed);
+    __attribute__((always_inline)) inline uint64_t operator()(Key const& key) const {
+        const uint64_t h = m_hasher(key);
         const __uint128_t p = static_cast<__uint128_t>(h) * m_params0.buckets;
         const uint64_t s = m_seeds0.get(static_cast<uint64_t>(p >> 64));
         if (s != 0) return pos0(h, static_cast<uint64_t>(p), s);
-        return get_slow(h, Hasher::hash(key, m_seed ^ SECOND_HASH));
+        return get_slow(h, m_second_hasher(key));
     }
 
     /* Returns whether the given key is bumped from the first level. */
     template <typename Key>
     bool is_bumped(Key const& key) const {
-        const uint64_t h = Hasher::hash(key, m_seed);
+        const uint64_t h = m_hasher(key);
         return m_seeds0.get(mul_hi(h, m_params0.buckets)) == 0;
     }
 
@@ -205,6 +225,10 @@ struct function {
 private:
     /* The seed used to compute signatures. */
     uint64_t m_seed = 0;
+    /* The hashers of the signatures and of the second hashes, prepared
+       from the seed once, at construction. */
+    Hasher m_hasher;
+    Hasher m_second_hasher;
     /* The number of keys. */
     uint64_t m_num_keys = 0;
     /* The base-2 logarithm of the distance in bits between the offsets of
@@ -257,14 +281,17 @@ private:
        for the level, the lower half `lo` of the product of h and the number
        of buckets, the seed of the bucket, the base-2 logarithm of the width
        of the field of each layout in `lo`, and the scale of the level. */
-    static inline uint64_t pos(level_params const& lv, uint64_t h, uint64_t lo, uint64_t s,
-                               uint32_t layout_shift, uint32_t scale) {
+    __attribute__((always_inline)) static inline uint64_t pos(level_params const& lv, uint64_t h,
+                                                              uint64_t lo, uint64_t s,
+                                                              uint32_t layout_shift,
+                                                              uint32_t scale) {
         const uint64_t offset = (lo >> ((s << layout_shift) & 63)) + (s << scale);
         return mul_hi(h, lv.num_slices) + (offset & lv.l_mask);
     }
 
-    static inline uint64_t pos_default(level_params const& lv, uint64_t h, uint64_t lo,
-                                       uint64_t s) {
+    __attribute__((always_inline)) static inline uint64_t pos_default(level_params const& lv,
+                                                                      uint64_t h, uint64_t lo,
+                                                                      uint64_t s) {
         const uint64_t offset = default_layout_field(lo, s) + (s << DEFAULT_SCALE);
         return mul_hi(h, lv.num_slices) + (offset & lv.l_mask);
     }
@@ -273,7 +300,7 @@ private:
        shifts we use constants, so that the compiler can fuse the scaling of
        the seed with the addition, and we extract the field of the layout
        with a load. */
-    inline uint64_t pos0(uint64_t h, uint64_t lo, uint64_t s) const {
+    __attribute__((always_inline)) inline uint64_t pos0(uint64_t h, uint64_t lo, uint64_t s) const {
         level_params const& lv = m_params0;
         if (m_default_shifts) return pos_default(lv, h, lo, s);
         switch (m_fast_scale) {
@@ -308,6 +335,8 @@ private:
     template <typename Visitor, typename T>
     static void visit_impl(Visitor& visitor, T&& t) {
         visitor.visit(t.m_seed);
+        visitor.visit(t.m_hasher);
+        visitor.visit(t.m_second_hasher);
         visitor.visit(t.m_num_keys);
         visitor.visit(t.m_layout_shift);
         visitor.visit(t.m_default_shifts);

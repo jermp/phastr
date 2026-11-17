@@ -170,9 +170,23 @@ static void test_duplicates() {
    and separated by the second hash at the following levels. */
 struct colliding_hasher {
     static constexpr uint64_t COLLIDING = 2000;
-    static inline uint64_t hash(uint64_t key, uint64_t seed) {
-        if (seed == 0 && key < 2 * COLLIDING) { return phastr::default_hasher::hash(key / 2, 0); }
-        return phastr::default_hasher::hash(key, seed);
+    uint64_t seed = 0;
+
+    colliding_hasher() = default;
+    explicit colliding_hasher(uint64_t s) : seed(s) {}
+
+    inline uint64_t operator()(uint64_t key) const {
+        if (seed == 0 && key < 2 * COLLIDING) { return phastr::default_hasher(0)(key / 2); }
+        return phastr::default_hasher(seed)(key);
+    }
+
+    template <typename Visitor>
+    void visit(Visitor& visitor) const {
+        visitor.visit(seed);
+    }
+    template <typename Visitor>
+    void visit(Visitor& visitor) {
+        visitor.visit(seed);
     }
 };
 
@@ -190,13 +204,28 @@ static void test_colliding_signatures() {
 }
 
 struct string_hasher {
-    static inline uint64_t hash(std::string const& key, uint64_t seed) {
-        uint64_t h = phastr::splitmix64(seed) ^ 0x9e3779b97f4a7c15ULL;
+    uint64_t prepared;
+
+    string_hasher() : string_hasher(0) {}
+    explicit string_hasher(uint64_t seed)
+        : prepared(phastr::splitmix64(seed) ^ 0x9e3779b97f4a7c15ULL) {}
+
+    inline uint64_t operator()(std::string const& key) const {
+        uint64_t h = prepared;
         for (char c : key) {
             h ^= static_cast<uint8_t>(c);
             h *= 0x100000001b3ULL;
         }
         return phastr::splitmix64(h);
+    }
+
+    template <typename Visitor>
+    void visit(Visitor& visitor) const {
+        visitor.visit(prepared);
+    }
+    template <typename Visitor>
+    void visit(Visitor& visitor) {
+        visitor.visit(prepared);
     }
 };
 
