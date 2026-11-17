@@ -66,11 +66,21 @@ static constexpr uint32_t DEFAULT_SCALE = 2;
 
 /* Returns, in its lowest 16 bits, the field of `lo` of layout r = s mod 4
    with four layouts (the default). The result agrees in its lowest 16 bits
-   with that of shifting `lo` right by 16s (as shifts are taken modulo 64),
-   but reading the field from memory avoids a variable shift whose count
-   depends on a cache miss, improving memory-level parallelism. */
+   with that of shifting `lo` right by 16s (as shifts are taken modulo 64).
+
+   On x86-64, reading the field from memory (the load is satisfied by
+   store-to-load forwarding) avoids a variable shift whose count depends on
+   a cache miss, which reduces memory-level parallelism (see the PHastR
+   paper). On other architectures, notably Apple Silicon, forwarding a
+   two-byte load at a variable offset from an eight-byte store stalls the
+   dependent chain, and the shift is faster. Define
+   PHASTR_LAYOUT_FIELD_LOAD or PHASTR_LAYOUT_FIELD_SHIFT to override the
+   choice. */
 static inline uint64_t default_layout_field(uint64_t lo, uint64_t s) {
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#if !defined(PHASTR_LAYOUT_FIELD_SHIFT) &&                                        \
+    (defined(PHASTR_LAYOUT_FIELD_LOAD) ||                                         \
+     (defined(__x86_64__) && defined(__BYTE_ORDER__) &&                           \
+      __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
     uint16_t field;
     std::memcpy(&field, reinterpret_cast<char const*>(&lo) + 2 * (s & 3), 2);
     return field;
