@@ -157,8 +157,11 @@ phastr::function<phastr::default_hasher, phastr::compact_seeds> f;
 f.build_in_internal_memory(keys.begin(), keys.size(), config);
 ```
 
-For key types other than `uint64_t`, supply a hasher with a static method
-`hash(Key const&, uint64_t seed) -> uint64_t`.
+For key types other than `uint64_t`, supply a hasher with the same
+interface as `phastr::default_hasher`: a constructor from a 64-bit seed
+(which can preprocess the seed once, so that queries pay only the per-key
+work), a hashing `uint64_t operator()(Key const&) const`, and a `visit`
+method serializing any preprocessed state.
 
 To use this project as a CMake dependency, add it as a subdirectory and link
 the interface target:
