@@ -296,7 +296,7 @@ int main(int argc, char** argv) {
     /* PHast and PHastR must use the very same hasher. */
     for (uint64_t key : {uint64_t(0), uint64_t(42), uint64_t(-1)}) {
         for (uint64_t s : {uint64_t(0), uint64_t(1), seed}) {
-            if (phast::default_hasher::hash_one(key, s) != phastr::default_hasher::hash(key, s)) {
+            if (phast::default_hasher::hash_one(key, s) != phastr::default_hasher(s)(key)) {
                 std::cerr << "ERROR: PHast and PHastR hashers differ" << std::endl;
                 return 1;
             }
