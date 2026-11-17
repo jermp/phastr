@@ -103,4 +103,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     target_include_directories(compare_mphf PRIVATE benchmarks)
     target_link_libraries(compare_mphf PRIVATE PHAST PTHASH)
   endif()
+
+  # Interleaved PHast vs. PHastR lookup duel (order and thermal effects
+  # affect both equally).
+  add_executable(compare_lookup benchmarks/compare_lookup.cpp)
+  target_link_libraries(compare_lookup PRIVATE PHAST)
 endif()
