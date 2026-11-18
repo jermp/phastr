@@ -183,6 +183,29 @@ struct function {
         return get_slow(h, m_second_hasher(key));
     }
 
+    /* Returns, in out[0..B), the values associated with the keys
+       keys[0..B), hashing all the keys and prefetching the seeds of their
+       buckets before computing any value: with independent lookups in
+       flight, the memory accesses of the batch overlap, so on large
+       functions a batched stream of lookups is faster than one lookup at
+       a time (batches of 16 to 64 keys work well). */
+    template <uint64_t B, typename Key>
+    inline void lookup_batch(Key const* keys, uint64_t* out) const {
+        uint64_t hashes[B];
+        for (uint64_t i = 0; i != B; ++i) {
+            const uint64_t h = m_hasher(keys[i]);
+            m_seeds0.prefetch_seed(mul_hi(h, m_params0.buckets));
+            hashes[i] = h;
+        }
+        for (uint64_t i = 0; i != B; ++i) {
+            const uint64_t h = hashes[i];
+            const __uint128_t p = static_cast<__uint128_t>(h) * m_params0.buckets;
+            const uint64_t s = m_seeds0.get(static_cast<uint64_t>(p >> 64));
+            out[i] = s != 0 ? pos0(h, static_cast<uint64_t>(p), s)
+                            : get_slow(h, m_second_hasher(keys[i]));
+        }
+    }
+
     /* Returns whether the given key is bumped from the first level. */
     template <typename Key>
     bool is_bumped(Key const& key) const {
