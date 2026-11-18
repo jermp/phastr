@@ -238,6 +238,18 @@ static void test_strings() {
     CHECK(is_mphf(f, keys));
 }
 
+static void test_lookup_batch() {
+    std::cout << "test_lookup_batch" << std::endl;
+    auto keys = distinct_keys(100000);
+    phastr::default_function f;
+    f.build_in_internal_memory(keys.begin(), keys.size(), {});
+    uint64_t out[16];
+    for (size_t i = 0; i + 16 <= keys.size(); i += 16) {
+        f.lookup_batch<16>(keys.data() + i, out);
+        for (size_t j = 0; j != 16; ++j) CHECK(out[j] == f(keys[i + j]));
+    }
+}
+
 static void test_save_load() {
     std::cout << "test_save_load" << std::endl;
     auto keys = distinct_keys(100000);
@@ -275,6 +287,7 @@ int main() {
     test_duplicates();
     test_colliding_signatures();
     test_strings();
+    test_lookup_batch();
     test_save_load();
     test_bumped_fraction();
     if (failed != 0) {
