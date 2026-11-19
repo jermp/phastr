@@ -136,11 +136,14 @@ f.build_in_internal_memory(keys.begin(), keys.size(), config);
 uint64_t pos = f(keys[0]);   // pos is in [0, keys.size())
 ```
 
-The two build methods read the keys just once from a forward iterator and
-build *identical* structures; the structure does not depend on the number
-of threads (it depends on `config.sweep_chunks`, which defaults to
-`config.num_threads`: fix it to make the structure independent of the
-number of threads used).
+The two build methods read the keys just once and build *identical*
+structures. With a random-access iterator the records of the keys are
+computed by `config.num_threads` writers in parallel (sharing the memory
+of one writer); a forward iterator is read sequentially. The structure
+does not depend on the number of threads, nor on the kind of iterator (it
+depends on `config.sweep_chunks`, which defaults to `config.num_threads`:
+fix it to make the structure independent of the number of threads
+used).
 
 The default configuration uses 8-bit seeds (stored one per byte), four
 layouts, slices of length 1024, and an expected bucket size of 4.25 keys,
