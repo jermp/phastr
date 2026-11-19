@@ -103,8 +103,10 @@ static bumped_keys collect_bumped(store const& st, geometry const& g,
         }
         assert(out.records.size() == k);
     } else {
+        const uint64_t writers =
+            std::min<uint64_t>(std::max<uint64_t>(config.num_threads, 1), st.num_partitions());
         store_writer writer(sig_fn::salted(salt), log2_partitions_for(k), config.external_memory,
-                            config.tmp_dir);
+                            config.tmp_dir, 0, writers);
         std::mutex len_mutex;
         uint64_t len = 0;
         by_thread(st, config.num_threads, [&](size_t, size_t begin, size_t end) {
@@ -168,9 +170,12 @@ static inline store store_records(std::vector<record> const& records, sig_fn sig
     st.log2_partitions = log2_partitions;
     st.len = records.size();
     st.on_disk = false;
-    st.partitions.assign(size_t(1) << log2_partitions, {});
-    for (auto const& r : records) {
-        st.partitions[partition_of(sig.sig(r), log2_partitions)].push_back(r);
+    const size_t np = size_t(1) << log2_partitions;
+    st.partitions.assign(np, {});
+    std::vector<std::vector<record>> runs(np);
+    for (auto const& r : records) { runs[partition_of(sig.sig(r), log2_partitions)].push_back(r); }
+    for (size_t p = 0; p != np; ++p) {
+        if (!runs[p].empty()) st.partitions[p].push_back(std::move(runs[p]));
     }
     return st;
 }
