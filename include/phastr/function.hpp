@@ -27,7 +27,10 @@
     number of sweep chunks, which defaults to the number of threads).
 */
 
+#include <cstddef>
+#include <iterator>
 #include <string>
+#include <type_traits>
 
 #include "essentials.hpp"
 #include "elias_fano.hpp"
@@ -107,6 +110,24 @@ __attribute__((always_inline)) static inline uint64_t default_layout_field(uint6
 #endif
 }
 
+namespace detail {
+
+/* Whether an iterator is random-access; false also for hand-rolled
+   iterators without iterator_traits, which are read sequentially. */
+template <typename Iterator, typename = void>
+struct is_random_access_iterator : std::false_type {};
+template <typename Iterator>
+struct is_random_access_iterator<
+    Iterator, std::void_t<typename std::iterator_traits<Iterator>::iterator_category>>
+    : std::is_base_of<std::random_access_iterator_tag,
+                      typename std::iterator_traits<Iterator>::iterator_category> {};
+
+}  // namespace detail
+
+/* The minimum number of keys of each writer of a parallel computation of
+   the records. */
+static constexpr uint64_t MIN_KEYS_PER_HASH_WRITER = 1 << 16;
+
 template <typename Hasher = default_hasher, typename SeedStore = byte_seeds>
 struct function {
     /* PHastR is always a minimal perfect hash function. */
@@ -144,25 +165,57 @@ struct function {
         }
         /* Compute and store the records of the keys. The number of
            partitions does not affect the structure built: in memory we use
-           fewer partitions, so that the writer writes to fewer places at
-           the same time. */
+           fewer partitions, so that a writer writes to fewer places at
+           the same time.
+
+           With a random-access iterator, the records are computed by
+           num_threads writers over disjoint ranges of the keys; the
+           structure built does not depend on the division into ranges (the
+           seed of a bucket depends only on the multiset of the signatures
+           of its keys), and the writers share the memory of one: in
+           memory, each run is reserved for its expected share of the
+           records; on disk, the blocks of each writer are smaller by the
+           number of writers. A forward iterator is read sequentially. */
         const uint32_t log2_partitions =
             config.external_memory ? MAX_LOG2_PARTITIONS : log2_partitions_for(n);
+        uint64_t hash_writers = 1;
+        if constexpr (detail::is_random_access_iterator<Iterator>::value) {
+            /* Each writer gets at least MIN_KEYS_PER_HASH_WRITER keys. */
+            hash_writers = std::min<uint64_t>(std::max<uint64_t>(config.num_threads, 1),
+                                              std::max<uint64_t>(n / MIN_KEYS_PER_HASH_WRITER, 1));
+        }
         store_writer writer(sig_fn::level0(), log2_partitions, config.external_memory,
-                            config.tmp_dir, n);
+                            config.tmp_dir, n, hash_writers);
         m_hasher = Hasher(config.seed);
         m_second_hasher = Hasher(config.seed ^ SECOND_HASH);
-        {
-            store_buffers buffers(writer);
+        if (hash_writers == 1) {
+            store_buffers buffers(writer, n);
             Iterator it = keys;
             for (uint64_t i = 0; i != n; ++i, ++it) {
                 auto const& key = *it;
                 record r;
                 r.h = m_hasher(key);
                 r.second = m_second_hasher(key);
-                buffers.push(r);
+                buffers.push_first_level(r);
             }
             buffers.finish();
+        } else {
+            if constexpr (detail::is_random_access_iterator<Iterator>::value) {
+                parallel_for_tasks(hash_writers, hash_writers, [&](size_t t) {
+                    const uint64_t begin = t * n / hash_writers;
+                    const uint64_t end = (t + 1) * n / hash_writers;
+                    store_buffers buffers(writer, end - begin);
+                    Iterator it = keys + static_cast<std::ptrdiff_t>(begin);
+                    for (uint64_t i = begin; i != end; ++i, ++it) {
+                        auto const& key = *it;
+                        record r;
+                        r.h = m_hasher(key);
+                        r.second = m_second_hasher(key);
+                        buffers.push_first_level(r);
+                    }
+                    buffers.finish();
+                });
+            }
         }
         store st = writer.finish(n);
         build_result res = config.seed_bits <= 8

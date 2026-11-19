@@ -188,8 +188,13 @@ struct store {
     uint64_t len = 0;
     bool on_disk = false;
 
-    /* In-memory storage: a vector for each partition. */
-    std::vector<std::vector<record>> partitions;
+    /* In-memory storage: for each partition, its records as a sequence of
+       *runs*, one per writer, which are moved into the store when a writer
+       finishes: the records of a partition are never merged or copied, and
+       the structure built does not depend on the division into runs, as
+       the seed of a bucket depends only on the multiset of the signatures
+       of its keys. */
+    std::vector<std::vector<std::vector<record>>> partitions;
 
     /* On-disk storage: temporary files and the table of the blocks. The
        file of a partition is its index shifted right by file_shift. */
@@ -202,8 +207,11 @@ struct store {
     }
 
     size_t partition_len(size_t p) const {
-        if (!on_disk) return partitions[p].size();
         size_t n = 0;
+        if (!on_disk) {
+            for (auto const& run : partitions[p]) n += run.size();
+            return n;
+        }
         for (auto const& b : blocks[p]) n += b.len;
         return n;
     }
@@ -212,7 +220,9 @@ struct store {
     template <typename F>
     void for_each(size_t p, std::vector<record>& buf, F const& f) const {
         if (!on_disk) {
-            for (auto const& r : partitions[p]) f(r);
+            for (auto const& run : partitions[p]) {
+                for (auto const& r : run) f(r);
+            }
             return;
         }
         for (auto const& b : blocks[p]) {
@@ -228,16 +238,25 @@ struct store {
 struct store_writer {
     store st;
     std::mutex mutex;
+    /* On disk, a mutex for each file: a flush appends a block to one file
+       and records it in the table of its partition, which belongs to that
+       file, so writers flushing to different files do not contend. */
+    std::vector<std::mutex> file_mutexes;
     /* The expected number of records, if known (0 otherwise): in memory,
-       partitions reserve their expected size, so that they do not grow. */
+       the buffers of a writer reserve their expected share, so that they
+       do not grow. */
     uint64_t expected = 0;
+    /* The number of writers that will write at the same time: on disk, the
+       blocks of each writer are smaller by this factor, so that the total
+       memory of the buffers stays that of a single writer. */
+    uint64_t num_writers = 1;
 
     /* Creates a writer for a store with the given signature function and
        number of partitions, kept in anonymous temporary files in `dir` if
        on_disk is true, and in memory otherwise. */
     store_writer(sig_fn sig, uint32_t log2_partitions, bool on_disk, std::string const& dir,
-                 uint64_t expected_records = 0)
-        : expected(expected_records) {
+                 uint64_t expected_records = 0, uint64_t writers = 1)
+        : expected(expected_records), num_writers(std::max<uint64_t>(writers, 1)) {
         st.sig = sig;
         st.log2_partitions = log2_partitions;
         st.on_disk = on_disk;
@@ -248,6 +267,7 @@ struct store_writer {
             for (auto& f : st.files) f.open(dir);
             st.blocks.assign(np, {});
             st.file_shift = log2_partitions - log2_files;
+            file_mutexes = std::vector<std::mutex>(size_t(1) << log2_files);
         } else {
             st.partitions.assign(np, {});
         }
@@ -256,12 +276,13 @@ struct store_writer {
     /* Returns the store, given the number of records written to it. */
     store finish(uint64_t len) {
         st.len = len;
-        if (!st.on_disk) {
-            for (auto& p : st.partitions) p.shrink_to_fit();
-        }
         return std::move(st);
     }
 };
+
+/* The minimum number of records of the blocks of a writer, when several
+   writers share the memory of one (see store_writer::num_writers). */
+static constexpr size_t MIN_BLOCK = 256;
 
 /* Returns whether a writer that has written `len` records, using blocks of
    `block` records for each of `partitions` partitions, has written on
@@ -272,31 +293,47 @@ static inline bool store_grows(uint64_t len, size_t partitions, size_t block) {
 
 /* The buffers of a thread writing to a store_writer: on disk, a block for
    each partition, which is appended to its file when full; otherwise, the
-   records of each partition, which are moved to the store at the end. */
+   records of each partition, which are moved to the store at the end (as a
+   run per partition, without copying). */
 struct store_buffers {
     store_writer* writer = nullptr;
     bool on_disk = false;
+    /* The signature function and the number of partitions of the store. */
+    sig_fn sig;
+    uint32_t log2_partitions = 0;
     /* On disk, a block for each partition, and the number of records in
        each block. */
     std::vector<record> block_storage;
     std::vector<uint32_t> lens;
     size_t block = BLOCK;
+    size_t max_block = MAX_BLOCK;
     /* Otherwise, the records of each partition. */
     std::vector<std::vector<record>> parts;
     /* The number of records pushed. */
     uint64_t len = 0;
 
-    explicit store_buffers(store_writer& w) : writer(&w), on_disk(w.st.on_disk) {
+    /* Creates the buffers of one writer; `expected_records` is the number
+       of records this writer is expected to push (by default, the expected
+       records of the store divided by the number of writers), used to
+       reserve the in-memory runs so that they do not grow. */
+    explicit store_buffers(store_writer& w, uint64_t expected_records = uint64_t(-1))
+        : writer(&w), on_disk(w.st.on_disk), sig(w.st.sig), log2_partitions(w.st.log2_partitions) {
         const size_t np = w.st.num_partitions();
+        if (expected_records == uint64_t(-1)) expected_records = w.expected / w.num_writers;
         if (on_disk) {
-            block_storage.assign(np * BLOCK, record{});
+            /* With several writers, the blocks of each are smaller, so that
+               the total memory of the buffers stays that of one writer. */
+            block = std::max<size_t>(BLOCK / w.num_writers, MIN_BLOCK);
+            max_block = std::max<size_t>(MAX_BLOCK / w.num_writers, MIN_BLOCK);
+            block_storage.assign(np * block, record{});
             lens.assign(np, 0);
         } else {
             parts.assign(np, {});
-            if (w.expected != 0) {
+            if (expected_records != 0) {
                 /* The expected number of records of a partition, plus six
-                   standard deviations of slack. */
-                const double mean = static_cast<double>(w.expected) / static_cast<double>(np);
+                   standard deviations of slack; the reserved memory beyond
+                   the records written is never touched. */
+                const double mean = static_cast<double>(expected_records) / static_cast<double>(np);
                 const size_t capacity =
                     static_cast<size_t>(std::ceil(mean + 6.0 * std::sqrt(mean)));
                 for (auto& p : parts) p.reserve(capacity);
@@ -306,7 +343,19 @@ struct store_buffers {
 
     /* Adds a record to the store. */
     inline void push(record const& r) {
-        const size_t p = partition_of(writer->st.sig.sig(r), writer->st.log2_partitions);
+        const size_t p = partition_of(sig.sig(r), log2_partitions);
+        push_to(p, r);
+    }
+
+    /* Adds a record to the store of the first level, whose signature is
+       the first component of the record. */
+    __attribute__((always_inline)) inline void push_first_level(record const& r) {
+        assert(sig.first_level);
+        const size_t p = partition_of(r.h, log2_partitions);
+        push_to(p, r);
+    }
+
+    __attribute__((always_inline)) inline void push_to(size_t p, record const& r) {
         len += 1;
         if (!on_disk) {
             parts[p].push_back(r);
@@ -317,16 +366,16 @@ struct store_buffers {
         l += 1;
         if (l == block) {
             flush(p);
-            if (block < MAX_BLOCK && store_grows(len, lens.size(), block)) grow();
+            if (block < max_block && store_grows(len, lens.size(), block)) grow();
         }
     }
 
     /* Appends the records in the block of partition p to its file. */
     void flush(size_t p) {
         const uint32_t l = lens[p];
-        std::lock_guard<std::mutex> guard(writer->mutex);
         auto& st = writer->st;
         const size_t f = p >> st.file_shift;
+        std::lock_guard<std::mutex> guard(writer->file_mutexes[f]);
         auto& file = st.files[f];
         const uint64_t pos = file.len;
         file.append(block_storage.data() + p * block, l);
@@ -347,7 +396,8 @@ struct store_buffers {
     }
 
     /* Moves the remaining records to the store, and returns the number of
-       records pushed. */
+       records pushed: in memory, each nonempty buffer becomes a run of its
+       partition, without copying the records. */
     uint64_t finish() {
         if (on_disk) {
             for (size_t p = 0; p != lens.size(); ++p) {
@@ -357,11 +407,7 @@ struct store_buffers {
             std::lock_guard<std::mutex> guard(writer->mutex);
             auto& partitions = writer->st.partitions;
             for (size_t p = 0; p != parts.size(); ++p) {
-                if (partitions[p].empty()) {
-                    partitions[p] = std::move(parts[p]);
-                } else {
-                    partitions[p].insert(partitions[p].end(), parts[p].begin(), parts[p].end());
-                }
+                if (!parts[p].empty()) partitions[p].push_back(std::move(parts[p]));
             }
         }
         return len;
